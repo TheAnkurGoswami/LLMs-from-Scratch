@@ -74,3 +74,34 @@ Where:
 - $\epsilon$ is a small value to prevent division by zero.
 - $\gamma$ is a learnable gain parameter.
 - $\beta$ is a learnable bias parameter.
+
+
+
+## Flash Attention
+
+The `FlashAttention` class implements a memory-efficient exact attention mechanism. It avoids materializing the large $N \times N$ attention matrix by using tiling and an online softmax algorithm.
+
+The online softmax algorithm updates the attention output block by block, using the following update rule:
+
+$$
+m_{\text{new}} = \max(m_{\text{old}}, m_{\text{block}})
+$$
+
+$$
+l_{\text{new}} = l_{\text{old}} e^{m_{\text{old}} - m_{\text{new}}} + l_{\text{block}} e^{m_{\text{block}} - m_{\text{new}}}
+$$
+
+$$
+O_{\text{new}} = \frac{l_{\text{old}} e^{m_{\text{old}} - m_{\text{new}}} O_{\text{old}} + l_{\text{block}} e^{m_{\text{block}} - m_{\text{new}}} O_{\text{block}}}{l_{\text{new}}}
+$$
+
+Where:
+- $m$ is the running maximum of the logits, used for numerical stability. For a block of scores $S_{ij} = Q_i K_j^T / \sqrt{d_k}$, the block-level statistics are:
+  $$
+  m_{\text{block}} = \max(S_{ij})
+  $$
+- $l$ is the running sum of the exponentials of the scaled logits.
+  $$
+  l_{\text{block}} = \sum \exp(S_{ij} - m_{\text{block}})
+  $$
+- $O$ is the attention output.
