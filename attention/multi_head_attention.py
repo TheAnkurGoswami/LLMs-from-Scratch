@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 from torch import Tensor
 
@@ -34,9 +32,9 @@ class MultiHeadAttentionNaive(torch.nn.Module):
         self,
         d_model: int,
         num_heads: int,
-        dim_q: Optional[int] = None,
-        dim_k: Optional[int] = None,
-        dim_v: Optional[int] = None,
+        dim_q: int | None = None,
+        dim_k: int | None = None,
+        dim_v: int | None = None,
         add_bias: bool = True,
         causal_mask: bool = False,
     ):
@@ -162,4 +160,52 @@ class MultiHeadAttentionNaive(torch.nn.Module):
 
         # Apply the final linear projection
         out = self.out_proj_layer.forward(concat_heads)
+        return out
+
+
+class MultiHeadAttention(MultiHeadAttentionNaive):
+    """
+    Implements Multi-Head Attention mechanism.
+    Reference: "Attention is All You Need" (Vaswani et al., 2017)
+    """
+
+    def forward(
+        self, inputs_q: Tensor, inputs_k: Tensor, inputs_v: Tensor
+    ) -> Tensor:
+        # Project the input into queries, keys, and values
+        q_proj = self.q_proj_layer(inputs_q)
+        k_proj = self.k_proj_layer(inputs_k)
+        v_proj = self.v_proj_layer(inputs_v)
+
+        batch, seq_len, model_dims = q_proj.shape
+        head_dim = model_dims // self.num_heads
+
+        """
+        Idea is to convert (batch, seq_len, model_dim) to 
+        (batch, seq_len, num_heads, head_dim) which can abbreviated as 
+        bsd -> bnhd.
+        A fine trick is to reshape to (batch * num_heads, seq_len, head_dim)
+        so that we can perform attention in parallel for all heads. 
+        Since, softmax is applied along seq_len dimension, moving num_heads to 
+        batch dimension makes sense.
+        """
+
+        q_proj = q_proj.view(batch * self.num_heads, seq_len, head_dim)
+        k_proj = k_proj.view(batch * self.num_heads, seq_len, head_dim)
+        v_proj = v_proj.view(batch * self.num_heads, seq_len, head_dim)
+
+        outputs = ScaledDotProductAttention().forward(
+            q_proj=q_proj,
+            k_proj=k_proj,
+            v_proj=v_proj,
+            causal_mask=self.causal_mask,
+        )  # Shape: (batch * num_heads, seq_len, head_dim)
+
+        # Reshape back to (batch, seq_len, model_dim)
+        outputs = outputs.view(
+            batch, seq_len, model_dims  # OR head_dim * self.num_heads
+        )
+
+        # Apply the final linear projection
+        out = self.out_proj_layer.forward(outputs)
         return out

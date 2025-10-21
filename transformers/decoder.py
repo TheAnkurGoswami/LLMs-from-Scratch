@@ -38,7 +38,9 @@ class DecoderLayer(torch.nn.Module):
         )
         self.layer_norm_1 = LayerNorm(d_model=d_model)
         # Multi-Head Attention for attending to the encoder output
-        self.mha = MultiHeadAttentionNaive(d_model=d_model, num_heads=num_heads)
+        self.mha = MultiHeadAttentionNaive(
+            d_model=d_model, num_heads=num_heads
+        )
         self.layer_norm_2 = LayerNorm(d_model=d_model)
         # Feed-Forward Network
         self.ffn = FeedForwardNetwork(d_model=d_model, d_ff=d_ff)
