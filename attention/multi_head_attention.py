@@ -7,7 +7,7 @@ from attention.projection import Projection
 from attention.scaled_dot_product_attention import ScaledDotProductAttention
 
 
-class MultiHeadAttention(torch.nn.Module):
+class MultiHeadAttentionNaive(torch.nn.Module):
     """
     Implements the Multi-Head Attention mechanism.
 
