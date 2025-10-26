@@ -28,13 +28,15 @@ class GroupedQueryAttention(torch.nn.Module):
         self.add_bias: bool = add_bias
         self.causal_mask: bool = causal_mask
 
+        # If specific dimensions for Q, K, V are not provided,
+        # default them to d_model
+        self.dim_q: int = dim_q if dim_q is not None else d_model
+        
         if self.dim_q % num_heads:
             raise ValueError(
                 "Total dimensions for Q must be divisible by num_heads."
             )
-        # If specific dimensions for Q, K, V are not provided,
-        # default them to d_model
-        self.dim_q: int = dim_q if dim_q is not None else d_model
+        
         self.head_dim = self.dim_q // num_heads
         self.dim_k: int = self.head_dim * n_kv_heads
         self.dim_v: int = self.dim_k
@@ -111,9 +113,11 @@ class GroupedQueryAttention(torch.nn.Module):
 
         # Multiply attention weights by values
         output = torch.einsum("bgpmn, bgnd -> bgpmd", attention, v_proj)
-
+        # Shape: (batch, n_kv_heads, n_heads_per_group, seq_len, head_dim)
+        output = output.permute(0, 3, 1, 2, 4).contiguous()
+        # Shape: (batch, seq_len, n_kv_heads, n_heads_per_group, head_dim)
         # Convert gpd (n_kv_heads * n_heads_per_group * head_dim) back to
-        # original dim.
+        # original dim_q.
         output = output.view(
             batch_size,
             seq_len,
