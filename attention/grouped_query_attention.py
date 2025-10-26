@@ -110,7 +110,8 @@ class GroupedQueryAttention(torch.nn.Module):
         # Multiply attention weights by values
         output = torch.einsum("bgpmn, bgnd -> bgpmd", attention, v_proj)
 
-        #  Convert gpd (n_groups * n_heads_per_group * head_dim) back to original dim.
+        # Convert gpd (n_groups * n_heads_per_group * head_dim) back to
+        # original dim.
         output = output.view(
             batch_size,
             seq_len,
