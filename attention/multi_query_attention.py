@@ -25,8 +25,8 @@ class MultiQueryAttention(torch.nn.Module):
         self.causal_mask: bool = causal_mask
 
         self.dim_q: int = dim_q if dim_q is not None else d_model
-        self.dim_k: int = d_model // num_heads
-        self.dim_v: int = d_model // num_heads
+        self.dim_k: int = self.dim_q // num_heads
+        self.dim_v: int = self.dim_q // num_heads
 
         if not (self.dim_q % num_heads == 0):
             raise ValueError(
@@ -50,7 +50,7 @@ class MultiQueryAttention(torch.nn.Module):
         )
 
         self.out_proj_layer = Projection(
-            in_features=self.dim_v,
+            in_features=self.dim_v * self.num_heads,
             out_features=self.d_model,
             add_bias=add_bias,
         )
