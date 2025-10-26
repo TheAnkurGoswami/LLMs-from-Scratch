@@ -67,17 +67,30 @@ class MultiQueryAttention(torch.nn.Module):
         v_proj = self.v_proj_layer(inputs_v)
         # Shape: (batch, seq_len, d_model/num_heads)
         batch_size, seq_len, _ = q_proj.shape
-        q_proj = q_proj.view(batch_size, self.num_heads, seq_len, self.dim_k)
+
+        # Reshape queries for multi-head attention
+        q_proj = q_proj.view(
+            batch_size, seq_len, self.num_heads, self.dim_k
+        ).transpose(1, 2)
         # Shape: (batch, num_heads, seq_len, d_model/num_heads)
+
         logits = torch.einsum("bhnk, bmk -> bhnm", q_proj, k_proj)
+
         # Scale
         # Mask
+
         # Apply softmax to get attention weights
         attention = torch.softmax(logits, dim=-1)
         # Multiply attention weights by values
         output = torch.einsum("bhnm, bmv -> bhnv", attention, v_proj)
+        # Shape: (batch, num_heads, seq_len, d_model/num_heads)
 
-        output = output.view(batch_size, seq_len, self.dim_v * self.num_heads)
+        output = (
+            output.transpose(1, 2)
+            .contiguous()
+            .view(batch_size, seq_len, self.dim_v * self.num_heads)
+        )
+
         # Final output projection
         output = self.out_proj_layer(output)
         return output
