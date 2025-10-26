@@ -17,16 +17,14 @@ class GroupedQueryAttention(torch.nn.Module):
         d_model: int,
         num_heads: int,
         dim_q: int | None = None,
-        dim_k: int | None = None,
-        dim_v: int | None = None,
-        n_groups: int = 1,
+        n_kv_heads: int = 1,
         add_bias: bool = True,
         causal_mask: bool = False,
     ):
         super().__init__()
         self.d_model: int = d_model  # Store as int, not tensor
         self.num_heads: int = num_heads
-        self.n_groups: int = n_groups
+        self.n_kv_heads: int = n_kv_heads
         self.add_bias: bool = add_bias
         self.causal_mask: bool = causal_mask
 
@@ -38,12 +36,12 @@ class GroupedQueryAttention(torch.nn.Module):
         # default them to d_model
         self.dim_q: int = dim_q if dim_q is not None else d_model
         self.head_dim = self.dim_q // num_heads
-        self.dim_k: int = self.head_dim * n_groups
+        self.dim_k: int = self.head_dim * n_kv_heads
         self.dim_v: int = self.dim_k
 
-        if num_heads % n_groups:
-            raise ValueError("num_heads must be divisible by n_groups.")
-        self.n_heads_per_group = num_heads // n_groups
+        if num_heads % n_kv_heads:
+            raise ValueError("num_heads must be divisible by n_kv_heads.")
+        self.n_heads_per_group = num_heads // n_kv_heads
         # Mapping from 'h' query heads to 'g' key/value heads.
 
         self.q_proj_layer = Projection(
@@ -82,18 +80,20 @@ class GroupedQueryAttention(torch.nn.Module):
         batch_size, seq_len, _ = q_proj.shape
         q_proj = q_proj.view(
             batch_size,
-            self.n_groups,
-            self.n_heads_per_group,
             seq_len,
+            self.n_kv_heads,
+            self.n_heads_per_group,
             self.head_dim,
-        )
+        ).permute(0, 2, 3, 1, 4)
         # Shape: (batch, seq_len, d_model) ->
         # (batch, num_heads, seq_len, head_dim) ->
-        # (batch, n_groups, n_heads_per_group, seq_len, head_size)
+        # (batch, n_kv_heads, n_heads_per_group, seq_len, head_size)
 
-        k_proj = k_proj.view(batch_size, self.n_groups, seq_len, self.head_dim)
+        k_proj = k_proj.view(
+            batch_size, seq_len, self.n_kv_heads, self.head_dim
+        ).transpose(1, 2)
         # Shape: (batch, seq_len, dim_k) ->
-        # (batch, num_groups, seq_len, head_dim)
+        # (batch, n_kv_heads, seq_len, head_dim)
 
         logits = torch.einsum("bgpmd, bgnd -> bgpmn", q_proj, k_proj)
 
@@ -103,19 +103,21 @@ class GroupedQueryAttention(torch.nn.Module):
         # Apply softmax to get attention weights
         attention = torch.softmax(logits, dim=-1)
 
-        v_proj = v_proj.view(batch_size, self.n_groups, seq_len, self.head_dim)
+        v_proj = v_proj.view(
+            batch_size, seq_len, self.n_kv_heads, self.head_dim
+        ).transpose(1, 2)
         # Shape: (batch, seq_len, dim_v) ->
         # (batch, num_groups, seq_len, head_dim)
 
         # Multiply attention weights by values
         output = torch.einsum("bgpmn, bgnd -> bgpmd", attention, v_proj)
 
-        # Convert gpd (n_groups * n_heads_per_group * head_dim) back to
+        # Convert gpd (n_kv_heads * n_heads_per_group * head_dim) back to
         # original dim.
         output = output.view(
             batch_size,
             seq_len,
-            self.head_dim * self.n_groups * self.n_heads_per_group,
+            self.head_dim * self.n_kv_heads * self.n_heads_per_group,
         )
         # Final output projection
         output = self.out_proj_layer(output)
