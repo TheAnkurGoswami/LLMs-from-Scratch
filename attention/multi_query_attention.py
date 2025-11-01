@@ -75,9 +75,17 @@ class MultiQueryAttention(torch.nn.Module):
         # Shape: (batch, num_heads, seq_len, d_model/num_heads)
 
         logits = torch.einsum("bhnk, bmk -> bhnm", q_proj, k_proj)
+        logits /= self.dim_k**0.5
 
-        # Scale
-        # Mask
+        # Apply causal mask if required
+        mask = torch.zeros_like(logits)
+        if self.causal_mask:
+            mask = torch.masked_fill(
+                mask,
+                mask=torch.ones_like(mask).tril().logical_not(),
+                value=-torch.inf,
+            )
+
 
         # Apply softmax to get attention weights
         attention = torch.softmax(logits, dim=-1)
