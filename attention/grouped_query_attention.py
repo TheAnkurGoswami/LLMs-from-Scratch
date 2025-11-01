@@ -109,6 +109,8 @@ class GroupedQueryAttention(torch.nn.Module):
                 value=-torch.inf,
             )
 
+        logits += mask
+
         # Apply softmax to get attention weights
         attention = torch.softmax(logits, dim=-1)
 

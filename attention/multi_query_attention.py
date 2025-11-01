@@ -85,7 +85,8 @@ class MultiQueryAttention(torch.nn.Module):
                 mask=torch.ones_like(mask).tril().logical_not(),
                 value=-torch.inf,
             )
-
+        
+        logits += mask
 
         # Apply softmax to get attention weights
         attention = torch.softmax(logits, dim=-1)
