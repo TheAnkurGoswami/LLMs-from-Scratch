@@ -20,7 +20,9 @@ torch.manual_seed(69)
         (4, True, 16, 20),
     ],
 )
-def test_scaled_dot_product_attention(batch_size, causal_mask, d_model, seq_len):
+def test_scaled_dot_product_attention(
+    batch_size, causal_mask, d_model, seq_len
+):
 
     q = torch.randn(batch_size, seq_len, d_model)
     k = torch.randn(batch_size, seq_len, d_model)
@@ -32,7 +34,8 @@ def test_scaled_dot_product_attention(batch_size, causal_mask, d_model, seq_len)
     sdpa_pt = torch.nn.functional.scaled_dot_product_attention
     output_pt = sdpa_pt(q, k, v, is_causal=causal_mask)
 
-    assert check_closeness(output_cus.detach().numpy(), output_pt.detach().numpy())
+    assert check_closeness(
+        output_cus.detach().numpy(), output_pt.detach().numpy())
 
 
 @pytest.mark.parametrize(
@@ -93,4 +96,5 @@ def test_multi_head_attention(batch_size, d_model, n_heads, seq_len):
     output_cus = mha_cus.forward(x, x, x)
     output_pt, _ = mha_pt.forward(x, x, x, need_weights=True)
 
-    assert check_closeness(output_cus.detach().numpy(), output_pt.detach().numpy())
+    assert check_closeness(
+        output_cus.detach().numpy(), output_pt.detach().numpy())

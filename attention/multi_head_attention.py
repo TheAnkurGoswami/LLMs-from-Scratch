@@ -212,7 +212,7 @@ class MultiHeadAttention(MultiHeadAttentionNaive):
         )  # Shape: (batch * num_heads, seq_len, head_dim)
 
         # Reshape back to (batch, seq_len, model_dim)
-        outputs = outputs.view(batch, num_heads, seq_len, head_dim)
+        outputs = outputs.view(batch, self.num_heads, seq_len, head_dim)
         outputs = outputs.transpose(1, 2).contiguous()
         outputs = outputs.view(
             batch, seq_len, model_dims  # OR head_dim * self.num_heads
