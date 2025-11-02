@@ -189,10 +189,20 @@ class MultiHeadAttention(MultiHeadAttentionNaive):
         Since, softmax is applied along seq_len dimension, moving num_heads to 
         batch dimension makes sense.
         """
+        q_proj = q_proj.view(batch, seq_len, self.num_heads, head_dim)
+        k_proj = k_proj.view(batch, seq_len, self.num_heads, head_dim)
+        v_proj = v_proj.view(batch, seq_len, self.num_heads, head_dim)
+        # Shape: (batch_size, seq_len, num_heads, head_dim) 
+
+        q_proj = q_proj.transpose(1, 2).contiguous()
+        k_proj = k_proj.transpose(1, 2).contiguous()
+        v_proj = v_proj.transpose(1, 2).contiguous()
+        # Shape: (batch_size, num_heads, seq_len, head_dim) 
 
         q_proj = q_proj.view(batch * self.num_heads, seq_len, head_dim)
         k_proj = k_proj.view(batch * self.num_heads, seq_len, head_dim)
         v_proj = v_proj.view(batch * self.num_heads, seq_len, head_dim)
+        # Shape: (batch_size * num_heads, seq_len, head_dim) 
 
         outputs = ScaledDotProductAttention().forward(
             q_proj=q_proj,
@@ -202,6 +212,8 @@ class MultiHeadAttention(MultiHeadAttentionNaive):
         )  # Shape: (batch * num_heads, seq_len, head_dim)
 
         # Reshape back to (batch, seq_len, model_dim)
+        outputs = outputs.view(batch, num_heads, seq_len, head_dim)
+        outputs = outputs.transpose(1, 2).contiguous()
         outputs = outputs.view(
             batch, seq_len, model_dims  # OR head_dim * self.num_heads
         )
