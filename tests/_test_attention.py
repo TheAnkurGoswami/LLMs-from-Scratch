@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import torch
 
-from attention.multi_head_attention import MultiHeadAttention
+from attention.multi_head_attention import MultiHeadAttentionNaive
 from utils import check_closeness
 
 torch.set_printoptions(precision=10)
@@ -34,7 +34,7 @@ def test_multi_head_attention(batch_size):
     )
     y = torch.randn(batch_size, seq_len, d_model, dtype=torch.float32)
 
-    mha_cus = MultiHeadAttention(
+    mha_cus = MultiHeadAttentionNaive(
         d_model=d_model,
         num_heads=n_heads,
         dim_q=dim_kqv,

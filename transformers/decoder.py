@@ -1,7 +1,7 @@
 import torch
 
 from attention.layernorm import LayerNorm
-from attention.multi_head_attention import MultiHeadAttention
+from attention.multi_head_attention import MultiHeadAttentionNaive
 from attention.projection import FeedForwardNetwork
 
 
@@ -33,12 +33,14 @@ class DecoderLayer(torch.nn.Module):
         """
         super().__init__()
         # Masked Multi-Head Attention for self-attention on the decoder side
-        self.mmha = MultiHeadAttention(
+        self.mmha = MultiHeadAttentionNaive(
             d_model=d_model, num_heads=num_heads, causal_mask=True
         )
         self.layer_norm_1 = LayerNorm(d_model=d_model)
         # Multi-Head Attention for attending to the encoder output
-        self.mha = MultiHeadAttention(d_model=d_model, num_heads=num_heads)
+        self.mha = MultiHeadAttentionNaive(
+            d_model=d_model, num_heads=num_heads
+        )
         self.layer_norm_2 = LayerNorm(d_model=d_model)
         # Feed-Forward Network
         self.ffn = FeedForwardNetwork(d_model=d_model, d_ff=d_ff)
