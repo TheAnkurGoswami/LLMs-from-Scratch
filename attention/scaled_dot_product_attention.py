@@ -53,15 +53,13 @@ class ScaledDotProductAttention(torch.nn.Module):
         logits /= dim_k**0.5
 
         # Apply causal mask if required
-        mask = torch.zeros_like(logits)
         if causal_mask:
-            mask = torch.masked_fill(
-                mask,
-                mask=torch.ones_like(mask).tril().logical_not(),
-                value=-torch.inf,
+            seq_len = q_proj.shape[1]
+            mask = torch.triu(
+                torch.ones(seq_len, seq_len, dtype=torch.bool),
+                diagonal=1
             )
-
-        logits += mask
+            logits = logits.masked_fill(mask=mask, value=float("-inf"))
 
         # Apply softmax to get attention weights
         attention = torch.softmax(logits, dim=-1)

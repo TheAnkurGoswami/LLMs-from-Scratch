@@ -1,7 +1,7 @@
 import torch
 
 from attention.layernorm import LayerNorm
-from attention.multi_head_attention import MultiHeadAttention
+from attention.multi_head_attention import MultiHeadAttentionNaive
 from attention.projection import FeedForwardNetwork
 
 
@@ -30,7 +30,9 @@ class EncoderLayer(torch.nn.Module):
                 feed-forward network. Defaults to 2048.
         """
         super().__init__()
-        self.mha = MultiHeadAttention(d_model=d_model, num_heads=num_heads)
+        self.mha = MultiHeadAttentionNaive(
+            d_model=d_model, num_heads=num_heads
+        )
         self.layer_norm_1 = LayerNorm(d_model)
         self.ffn = FeedForwardNetwork(d_model=d_model, d_ff=d_ff)
         self.layer_norm_2 = LayerNorm(d_model)
