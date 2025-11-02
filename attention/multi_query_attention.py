@@ -25,8 +25,9 @@ class MultiQueryAttention(torch.nn.Module):
         self.causal_mask: bool = causal_mask
 
         self.dim_q: int = dim_q if dim_q is not None else d_model
-        self.dim_k: int = self.dim_q // num_heads
-        self.dim_v: int = self.dim_q // num_heads
+        self.head_dim: int = self.dim_q // num_heads
+        self.dim_k: int = self.head_dim
+        self.dim_v: int = self.head_dim
 
         if not (self.dim_q % num_heads == 0):
             raise ValueError(
@@ -63,14 +64,14 @@ class MultiQueryAttention(torch.nn.Module):
         q_proj = self.q_proj_layer(inputs_q)
         # Shape: (batch, seq_len, d_model)
         k_proj = self.k_proj_layer(inputs_k)
-        # Shape: (batch, seq_len, d_model/num_heads)
+        # Shape: (batch, seq_len, head_dim)
         v_proj = self.v_proj_layer(inputs_v)
-        # Shape: (batch, seq_len, d_model/num_heads)
+        # Shape: (batch, seq_len, head_dim)
         batch_size, seq_len, _ = q_proj.shape
 
         # Reshape queries for multi-head attention
         q_proj = q_proj.view(
-            batch_size, seq_len, self.num_heads, self.dim_k
+            batch_size, seq_len, self.num_heads, self.head_dim
         ).transpose(1, 2)
         # Shape: (batch, num_heads, seq_len, d_model/num_heads)
 

@@ -98,7 +98,7 @@ class GroupedQueryAttention(torch.nn.Module):
         # (batch, n_kv_heads, seq_len, head_dim)
 
         logits = torch.einsum("bgpmd, bgnd -> bgpmn", q_proj, k_proj)
-        logits /= self.dim_k**0.5
+        logits /= self.head_dim**0.5
 
         # Apply causal mask if required
         mask = torch.zeros_like(logits)
