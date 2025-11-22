@@ -56,8 +56,7 @@ class ScaledDotProductAttention(torch.nn.Module):
         if causal_mask:
             seq_len = q_proj.shape[1]
             mask = torch.triu(
-                torch.ones(seq_len, seq_len, dtype=torch.bool),
-                diagonal=1
+                torch.ones(seq_len, seq_len, dtype=torch.bool), diagonal=1
             )
             logits = logits.masked_fill(mask=mask, value=float("-inf"))
 

@@ -35,7 +35,8 @@ def test_scaled_dot_product_attention(
     output_pt = sdpa_pt(q, k, v, is_causal=causal_mask)
 
     assert check_closeness(
-        output_cus.detach().numpy(), output_pt.detach().numpy())
+        output_cus.detach().numpy(), output_pt.detach().numpy()
+    )
 
 
 @pytest.mark.parametrize(
@@ -97,4 +98,5 @@ def test_multi_head_attention(batch_size, d_model, n_heads, seq_len):
     output_pt, _ = mha_pt.forward(x, x, x, need_weights=True)
 
     assert check_closeness(
-        output_cus.detach().numpy(), output_pt.detach().numpy())
+        output_cus.detach().numpy(), output_pt.detach().numpy()
+    )

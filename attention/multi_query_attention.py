@@ -81,10 +81,9 @@ class MultiQueryAttention(torch.nn.Module):
         # Apply causal mask if required
         if self.causal_mask:
             mask = torch.triu(
-                torch.ones(seq_len, seq_len, dtype=torch.bool),
-                diagonal=1
+                torch.ones(seq_len, seq_len, dtype=torch.bool), diagonal=1
             )
-            logits = logits.masked_fill(mask, float('-inf'))
+            logits = logits.masked_fill(mask, float("-inf"))
 
         # Apply softmax to get attention weights
         attention = torch.softmax(logits, dim=-1)

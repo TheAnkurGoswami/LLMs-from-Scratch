@@ -31,12 +31,12 @@ class GroupedQueryAttention(torch.nn.Module):
         # If specific dimensions for Q, K, V are not provided,
         # default them to d_model
         self.dim_q: int = dim_q if dim_q is not None else d_model
-        
+
         if self.dim_q % num_heads:
             raise ValueError(
                 "Total dimensions for Q must be divisible by num_heads."
             )
-        
+
         self.head_dim = self.dim_q // num_heads
         self.dim_k: int = self.head_dim * n_kv_heads
         self.dim_v: int = self.dim_k
@@ -103,10 +103,9 @@ class GroupedQueryAttention(torch.nn.Module):
         # Apply causal mask if required
         if self.causal_mask:
             mask = torch.triu(
-                torch.ones(seq_len, seq_len, dtype=torch.bool),
-                diagonal=1
+                torch.ones(seq_len, seq_len, dtype=torch.bool), diagonal=1
             )
-            logits = logits.masked_fill(mask, float('-inf'))
+            logits = logits.masked_fill(mask, float("-inf"))
 
         # Apply softmax to get attention weights
         attention = torch.softmax(logits, dim=-1)

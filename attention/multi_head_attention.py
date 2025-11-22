@@ -1,9 +1,9 @@
-from inference.kv_caching import KeyValueCaching
 import torch
 from torch import Tensor
 
 from attention.projection import Projection
 from attention.scaled_dot_product_attention import ScaledDotProductAttention
+from inference.kv_caching import KeyValueCaching
 
 
 class MultiHeadAttentionNaive(torch.nn.Module):
@@ -217,7 +217,7 @@ class MultiHeadAttention(MultiHeadAttentionNaive):
         q_proj = q_proj.view(batch, seq_len, self.num_heads, head_dim)
         k_proj = k_proj.view(batch, seq_len, self.num_heads, head_dim)
         v_proj = v_proj.view(batch, seq_len, self.num_heads, head_dim)
-        # Shape: (batch_size, seq_len, num_heads, head_dim) 
+        # Shape: (batch_size, seq_len, num_heads, head_dim)
 
         if self.allow_kv_caching:
             k_proj, v_proj = self.kv_cache.update(k_proj, v_proj)
@@ -225,12 +225,12 @@ class MultiHeadAttention(MultiHeadAttentionNaive):
         q_proj = q_proj.transpose(1, 2).contiguous()
         k_proj = k_proj.transpose(1, 2).contiguous()
         v_proj = v_proj.transpose(1, 2).contiguous()
-        # Shape: (batch_size, num_heads, seq_len, head_dim) 
+        # Shape: (batch_size, num_heads, seq_len, head_dim)
 
         q_proj = q_proj.view(batch * self.num_heads, seq_len, head_dim)
         k_proj = k_proj.view(batch * self.num_heads, seq_len, head_dim)
         v_proj = v_proj.view(batch * self.num_heads, seq_len, head_dim)
-        # Shape: (batch_size * num_heads, seq_len, head_dim) 
+        # Shape: (batch_size * num_heads, seq_len, head_dim)
 
         outputs = ScaledDotProductAttention().forward(
             q_proj=q_proj,
