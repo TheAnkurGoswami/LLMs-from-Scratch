@@ -1,3 +1,4 @@
+from inference.kv_caching import KeyValueCaching
 import torch
 from torch import Tensor
 
@@ -169,6 +170,30 @@ class MultiHeadAttention(MultiHeadAttentionNaive):
     Reference: "Attention is All You Need" (Vaswani et al., 2017)
     """
 
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        dim_q: int | None = None,
+        dim_k: int | None = None,
+        dim_v: int | None = None,
+        add_bias: bool = True,
+        causal_mask: bool = False,
+        allow_kv_caching: bool = False,
+    ):
+        super().__init__(
+            d_model=d_model,
+            num_heads=num_heads,
+            dim_q=dim_q,
+            dim_k=dim_k,
+            dim_v=dim_v,
+            add_bias=add_bias,
+            causal_mask=causal_mask,
+        )
+        self.allow_kv_caching = allow_kv_caching
+        if allow_kv_caching:
+            self.kv_cache = KeyValueCaching()
+
     def forward(
         self, inputs_q: Tensor, inputs_k: Tensor, inputs_v: Tensor
     ) -> Tensor:
@@ -193,6 +218,9 @@ class MultiHeadAttention(MultiHeadAttentionNaive):
         k_proj = k_proj.view(batch, seq_len, self.num_heads, head_dim)
         v_proj = v_proj.view(batch, seq_len, self.num_heads, head_dim)
         # Shape: (batch_size, seq_len, num_heads, head_dim) 
+
+        if self.allow_kv_caching:
+            k_proj, v_proj = self.kv_cache.update(k_proj, v_proj)
 
         q_proj = q_proj.transpose(1, 2).contiguous()
         k_proj = k_proj.transpose(1, 2).contiguous()
