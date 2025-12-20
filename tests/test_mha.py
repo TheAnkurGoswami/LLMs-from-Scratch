@@ -39,6 +39,43 @@ def test_scaled_dot_product_attention(
     )
 
 
+def test_multi_head_attention_kv_caching():
+    batch_size = 1
+    d_model = 4
+    n_heads = 2
+    seq_len = 5
+    dim_kqv = d_model
+
+    mha_cus = MultiHeadAttention(
+        d_model=d_model,
+        num_heads=n_heads,
+        dim_q=dim_kqv,
+        dim_k=dim_kqv,
+        dim_v=dim_kqv,
+        allow_kv_caching=True,
+    )
+
+    # Prefill
+    x_prefill = torch.randint(
+        low=0,
+        high=10,
+        size=(batch_size, seq_len, d_model),
+        dtype=torch.float32,
+    )
+    _ = mha_cus.forward(x_prefill, x_prefill, x_prefill)
+
+    # Decode
+    x_decode = torch.randint(
+        low=0,
+        high=10,
+        size=(batch_size, 1, d_model),
+        dtype=torch.float32,
+    )
+    output_cus = mha_cus.forward(x_decode, x_decode, x_decode)
+
+    assert output_cus.shape == (batch_size, 1, d_model)
+
+
 @pytest.mark.parametrize(
     "batch_size, d_model, n_heads, seq_len",
     [

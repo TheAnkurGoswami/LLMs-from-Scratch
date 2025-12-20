@@ -229,8 +229,10 @@ class MultiHeadAttention(MultiHeadAttentionNaive):
         # Shape: (batch_size, num_heads, seq_len, head_dim)
 
         q_proj = q_proj.view(batch * self.num_heads, seq_len, head_dim)
-        k_proj = k_proj.view(batch * self.num_heads, seq_len, head_dim)
-        v_proj = v_proj.view(batch * self.num_heads, seq_len, head_dim)
+
+        seq_len_kv = k_proj.shape[-2]
+        k_proj = k_proj.view(batch * self.num_heads, seq_len_kv, head_dim)
+        v_proj = v_proj.view(batch * self.num_heads, seq_len_kv, head_dim)
         # Shape: (batch_size * num_heads, seq_len, head_dim)
 
         outputs = ScaledDotProductAttention().forward(
