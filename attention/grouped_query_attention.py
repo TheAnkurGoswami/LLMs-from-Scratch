@@ -1,3 +1,4 @@
+from inference.kv_caching import KeyValueCaching
 import torch
 from torch import Tensor
 
@@ -20,6 +21,7 @@ class GroupedQueryAttention(torch.nn.Module):
         n_kv_heads: int = 1,
         add_bias: bool = True,
         causal_mask: bool = False,
+        allow_kv_caching: bool = False,
     ):
         super().__init__()
         self.d_model: int = d_model  # Store as int, not tensor
@@ -68,6 +70,11 @@ class GroupedQueryAttention(torch.nn.Module):
             add_bias=add_bias,
         )
 
+        self.allow_kv_caching = allow_kv_caching
+        
+        if allow_kv_caching:
+            self.kv_cache = KeyValueCaching()
+
     def forward(
         self, inputs_q: Tensor, inputs_k: Tensor, inputs_v: Tensor
     ) -> Tensor:
@@ -78,6 +85,9 @@ class GroupedQueryAttention(torch.nn.Module):
         # Shape: (batch, seq_len, dim_k)
         v_proj = self.v_proj_layer(inputs_v)
         # Shape: (batch, seq_len, dim_k)
+
+        if self.allow_kv_caching:
+            k_proj, v_proj = self.kv_cache.update(k_proj, v_proj)
 
         batch_size, seq_len, _ = q_proj.shape
         q_proj = q_proj.view(

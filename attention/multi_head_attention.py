@@ -191,6 +191,7 @@ class MultiHeadAttention(MultiHeadAttentionNaive):
             causal_mask=causal_mask,
         )
         self.allow_kv_caching = allow_kv_caching
+        
         if allow_kv_caching:
             self.kv_cache = KeyValueCaching()
 
