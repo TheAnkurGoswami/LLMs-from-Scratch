@@ -117,19 +117,20 @@ class MultiHeadLatentAttention(torch.nn.Module):
         # Low-rank key-value joint compression
         # inputs shape (batch_size, seq_len, model_dims)
         q_latent = self.q_down_proj_layer(inputs_q)
+        # NOTE: Query compression does not affect KV cache performance.
+        # It is used solely during training to reduce activation memory.
         kv_latent = self.kv_down_proj_layer(inputs_k)
-        # Latents shape
-        # q: (batch_size, seq_len, q_latent_dim)
-        # kv: (batch_size, seq_len, kv_latent_dim)
+        # q_latent: (batch_size, seq_len, q_latent_dim)
+        # kv_latent: (batch_size, seq_len, kv_latent_dim)
 
         q_proj = self.q_up_proj_layer(q_latent)
         k_proj = self.k_up_proj_layer(kv_latent)
         v_proj = self.v_up_proj_layer(kv_latent)
 
         # Projections Shape
-        # q: (batch_size, seq_len, dim_q)
-        # k: (batch_size, seq_len, dim_k)
-        # v: (batch_size, seq_len, dim_v)
+        # q_proj: (batch_size, seq_len, dim_q)
+        # k_proj: (batch_size, seq_len, dim_k)
+        # v_proj: (batch_size, seq_len, dim_v)
 
         q_rope, k_rope = self.decoupled_rope(q_latent, inputs_k)
 
