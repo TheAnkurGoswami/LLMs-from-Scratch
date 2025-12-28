@@ -102,11 +102,9 @@ class MultiHeadLatentAttention(torch.nn.Module):
         k_rope_proj = self.k_rope_proj_layer(inputs_k)
         # q_rope_proj: (batch_size, seq_len, dim_q)
         # k_rope_proj: (batch_size, seq_len, head_dim)
+
         q_rope = RotaryPositionalEncoding(d_model=self.d_model)(q_rope_proj)
-        # print("q_rope", q_rope_proj.shape, q_rope.shape)
-        # print(k_rope_proj.shape, self.head_dim)
         k_rope = RotaryPositionalEncoding(d_model=self.head_dim)(k_rope_proj)
-        # print("k_rope", k_rope_proj.shape, k_rope.shape)
         # q_rope shape: (batch_size, seq_len, dim_q)
         # k_rope shape: (batch_size, seq_len, head_dim)
         return q_rope, k_rope
@@ -143,19 +141,13 @@ class MultiHeadLatentAttention(torch.nn.Module):
         q_rope = q_rope.view(batch, seq_len, self.num_heads, self.head_dim)
         k_rope = k_rope.view(batch, seq_len, 1, self.head_dim)
 
-        # print(projected_q.shape, q_rope.shape)
         q_new = torch.concat((q_proj, q_rope), dim=-1)
         k_rope_shared = k_rope.expand(-1, -1, self.num_heads, -1)
         k_new = torch.concat((k_proj, k_rope_shared), dim=-1)
 
-        # print(q_new.shape)
-        # print(projected_k.shape, k_rope.shape, k_rope_shared.shape)
-        # print(k_new.shape)
-
         q_new = q_new.transpose(1, 2).contiguous()
         k_new = k_new.transpose(1, 2).contiguous()
         v_proj = v_proj.transpose(1, 2).contiguous()
-        # print(q_new.shape, k_new.shape, v_proj.shape)
         # Shape: (batch_size, num_heads, seq_len, head_dim)
 
         q_new = q_new.view(batch * self.num_heads, seq_len, -1)
@@ -168,8 +160,6 @@ class MultiHeadLatentAttention(torch.nn.Module):
             v_proj=v_proj,
             causal_mask=self.causal_mask,
         )  # Shape: (batch * num_heads, seq_len, head_dim)
-
-        # print(outputs.shape)
 
         outputs = outputs.view(batch, self.num_heads, seq_len, self.head_dim)
         outputs = outputs.transpose(1, 2).contiguous()
