@@ -37,6 +37,8 @@ class RotaryPositionalEncoding(torch.nn.Module):
         self.wavelength = 10_000
         self.d_model = d_model
 
+        assert d_model % 2 == 0, "d_model must be even for RoPE."
+
         # Create the theta values for the rotation
         ix = torch.arange(self.d_model) // 2
         # ix -> [0, 0, 1, 1, .... d/2 - 1, d/2 - 1]
@@ -71,7 +73,7 @@ class RotaryPositionalEncoding(torch.nn.Module):
         first_comp = input_ * torch.cos(theta_m)
         second_comp = torch.stack(
             (-input_[:, :, 1::2], input_[:, :, ::2]), dim=-1
-        ).reshape(input_.shape) * torch.sin(theta_m)
+        ).contiguous().reshape(input_.shape) * torch.sin(theta_m)
 
         return first_comp + second_comp
         # (batch_size, seq_len, d_model)
