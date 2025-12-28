@@ -7,11 +7,18 @@ from positional_encoding.rotary import RotaryPositionalEncoding
 
 
 class MultiHeadLatentAttention(torch.nn.Module):
+    """
+    Implements the Multi-Head Latent Attention mechanism.
+    Reference: DeepSeek-V2: A Strong, Economical, and
+        Efficient Mixture-of-Experts Language Model
+        (https://arxiv.org/pdf/2405.04434)
+    """
+
     def __init__(
         self,
         d_model: int,
-        d_q_compression: int,
-        d_kv_compression: int,
+        q_latent_dim: int,
+        kv_latent_dim: int,
         num_heads: int,
         dim_q: int | None = None,
         dim_k: int | None = None,
@@ -21,8 +28,8 @@ class MultiHeadLatentAttention(torch.nn.Module):
     ):
         super().__init__()
         self.d_model: int = d_model  # Store as int, not tensor
-        self.d_q_compression = d_q_compression
-        self.d_kv_compression = d_kv_compression
+        self.q_latent_dim = q_latent_dim
+        self.kv_latent_dim = kv_latent_dim
         self.num_heads: int = num_heads
         self.add_bias: bool = add_bias
         self.causal_mask: bool = causal_mask
@@ -45,36 +52,36 @@ class MultiHeadLatentAttention(torch.nn.Module):
 
         self.q_down_proj_layer = Projection(
             in_features=self.d_model,
-            out_features=self.d_q_compression,
+            out_features=self.q_latent_dim,
             add_bias=False,
         )
 
         self.kv_down_proj_layer = Projection(
             in_features=self.d_model,
-            out_features=self.d_kv_compression,
+            out_features=self.kv_latent_dim,
             add_bias=False,
         )
 
         self.q_up_proj_layer = Projection(
-            in_features=self.d_q_compression,
+            in_features=self.q_latent_dim,
             out_features=self.dim_q,
             add_bias=False,
         )
 
         self.k_up_proj_layer = Projection(
-            in_features=self.d_kv_compression,
+            in_features=self.kv_latent_dim,
             out_features=self.dim_k,
             add_bias=False,
         )
 
         self.v_up_proj_layer = Projection(
-            in_features=self.d_kv_compression,
+            in_features=self.kv_latent_dim,
             out_features=self.dim_v,
             add_bias=False,
         )
 
         self.q_rope_proj_layer = Projection(
-            in_features=self.d_q_compression,
+            in_features=self.q_latent_dim,
             out_features=self.dim_q,
             add_bias=False,
         )
@@ -112,8 +119,8 @@ class MultiHeadLatentAttention(torch.nn.Module):
         q_latent = self.q_down_proj_layer(inputs_q)
         kv_latent = self.kv_down_proj_layer(inputs_k)
         # Latents shape
-        # q: (batch_size, seq_len, d_q_compression)
-        # kv: (batch_size, seq_len, d_kv_compression)
+        # q: (batch_size, seq_len, q_latent_dim)
+        # kv: (batch_size, seq_len, kv_latent_dim)
 
         q_proj = self.q_up_proj_layer(q_latent)
         k_proj = self.k_up_proj_layer(kv_latent)
@@ -129,23 +136,25 @@ class MultiHeadLatentAttention(torch.nn.Module):
         # Apply Rotary Positional Encoding
         batch, seq_len, _ = q_proj.shape
         q_proj = q_proj.view(batch, seq_len, self.num_heads, self.head_dim)
+        k_proj = k_proj.view(batch, seq_len, self.num_heads, self.head_dim)
+        v_proj = v_proj.view(batch, seq_len, self.num_heads, self.head_dim)
+
         q_rope = q_rope.view(batch, seq_len, self.num_heads, self.head_dim)
+        k_rope = k_rope.view(batch, seq_len, 1, self.head_dim)
+
         # print(projected_q.shape, q_rope.shape)
         q_new = torch.concat((q_proj, q_rope), dim=-1)
-        print(q_new.shape)
-        k_proj = k_proj.view(batch, seq_len, self.num_heads, self.head_dim)
-        k_rope = k_rope.view(batch, seq_len, 1, self.head_dim)
         k_rope_shared = k_rope.expand(-1, -1, self.num_heads, -1)
-        # print(projected_k.shape, k_rope.shape, k_rope_shared.shape)
         k_new = torch.concat((k_proj, k_rope_shared), dim=-1)
-        print(k_new.shape)
 
-        v_proj = v_proj.view(batch, seq_len, self.num_heads, self.head_dim)
+        # print(q_new.shape)
+        # print(projected_k.shape, k_rope.shape, k_rope_shared.shape)
+        # print(k_new.shape)
 
         q_new = q_new.transpose(1, 2).contiguous()
         k_new = k_new.transpose(1, 2).contiguous()
         v_proj = v_proj.transpose(1, 2).contiguous()
-        print(q_new.shape, k_new.shape, v_proj.shape)
+        # print(q_new.shape, k_new.shape, v_proj.shape)
         # Shape: (batch_size, num_heads, seq_len, head_dim)
 
         q_new = q_new.view(batch * self.num_heads, seq_len, -1)
@@ -159,7 +168,7 @@ class MultiHeadLatentAttention(torch.nn.Module):
             causal_mask=self.causal_mask,
         )  # Shape: (batch * num_heads, seq_len, head_dim)
 
-        print(outputs.shape)
+        # print(outputs.shape)
 
         outputs = outputs.view(batch, self.num_heads, seq_len, self.head_dim)
         outputs = outputs.transpose(1, 2).contiguous()
