@@ -1,8 +1,8 @@
-from inference.kv_caching import KeyValueCaching
 import torch
 from torch import Tensor
 
 from attention.projection import Projection
+from inference.kv_caching import KeyValueCaching
 
 
 class MultiQueryAttention(torch.nn.Module):
@@ -59,10 +59,11 @@ class MultiQueryAttention(torch.nn.Module):
         )
 
         self.allow_kv_caching = allow_kv_caching
-        
+
         if allow_kv_caching:
             self.kv_cache = KeyValueCaching(
-                caching_tensor_names=["k_proj", "v_proj"])
+                caching_tensor_names=["k_proj", "v_proj"]
+            )
 
     def forward(
         self, inputs_q: Tensor, inputs_k: Tensor, inputs_v: Tensor
@@ -80,7 +81,7 @@ class MultiQueryAttention(torch.nn.Module):
         if self.allow_kv_caching:
             k_proj, v_proj = self.kv_cache.update(k_proj=k_proj, v_proj=v_proj)
 
-        seq_len_kv= k_proj.shape[1]
+        seq_len_kv = k_proj.shape[1]
 
         # Reshape queries for multi-head attention
         q_proj = q_proj.view(

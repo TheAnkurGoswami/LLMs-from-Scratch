@@ -19,5 +19,5 @@ class KeyValueCaching(torch.nn.Module):
                 setattr(self, tensor_name, new_cached_tensor)
 
         return tuple(
-            getattr(self, tensor_name)
-            for tensor_name in kwargs.keys())
+            getattr(self, tensor_name) for tensor_name in kwargs.keys()
+        )

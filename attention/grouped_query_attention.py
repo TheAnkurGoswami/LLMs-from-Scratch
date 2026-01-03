@@ -1,8 +1,8 @@
-from inference.kv_caching import KeyValueCaching
 import torch
 from torch import Tensor
 
 from attention.projection import Projection
+from inference.kv_caching import KeyValueCaching
 
 
 class GroupedQueryAttention(torch.nn.Module):
@@ -71,10 +71,11 @@ class GroupedQueryAttention(torch.nn.Module):
         )
 
         self.allow_kv_caching = allow_kv_caching
-        
+
         if allow_kv_caching:
             self.kv_cache = KeyValueCaching(
-                caching_tensor_names=["k_proj", "v_proj"])
+                caching_tensor_names=["k_proj", "v_proj"]
+            )
 
     def forward(
         self, inputs_q: Tensor, inputs_k: Tensor, inputs_v: Tensor

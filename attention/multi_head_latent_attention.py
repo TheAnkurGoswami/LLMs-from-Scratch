@@ -1,9 +1,9 @@
-from inference.kv_caching import KeyValueCaching
 import torch
 from torch import Tensor
 
 from attention.projection import Projection
 from attention.scaled_dot_product_attention import ScaledDotProductAttention
+from inference.kv_caching import KeyValueCaching
 from positional_encoding.rotary import RotaryPositionalEncoding
 
 
@@ -102,7 +102,8 @@ class MultiHeadLatentAttention(torch.nn.Module):
 
         if allow_kv_caching:
             self.kv_cache = KeyValueCaching(
-                caching_tensor_names=["kv_latent", "k_rope"])
+                caching_tensor_names=["kv_latent", "k_rope"]
+            )
 
     def decoupled_rope(self, q_latent, inputs_k):
         q_rope_proj = self.q_rope_proj_layer(q_latent)
@@ -125,14 +126,15 @@ class MultiHeadLatentAttention(torch.nn.Module):
         # q_latent: (batch_size, seq_len, q_latent_dim)
         # NOTE: Query compression does not affect KV cache performance.
         # It is used solely during training to reduce activation memory.
-        
+
         q_rope, k_rope = self.decoupled_rope(q_latent, inputs_k)
         kv_latent = self.kv_down_proj_layer(inputs_k)
         # kv_latent: (batch_size, seq_len, kv_latent_dim)
 
         if self.allow_kv_caching:
             kv_latent, k_rope = self.kv_cache.update(
-                kv_latent=kv_latent, k_rope=k_rope)
+                kv_latent=kv_latent, k_rope=k_rope
+            )
 
         q_proj = self.q_up_proj_layer(q_latent)
         k_proj = self.k_up_proj_layer(kv_latent)
