@@ -1,3 +1,4 @@
+from inference.kv_caching import KeyValueCaching
 import torch
 from torch import Tensor
 
@@ -25,6 +26,7 @@ class MultiHeadLatentAttention(torch.nn.Module):
         dim_v: int | None = None,
         add_bias: bool = True,
         causal_mask: bool = False,
+        allow_kv_caching: bool = False,
     ):
         super().__init__()
         self.d_model: int = d_model  # Store as int, not tensor
@@ -33,6 +35,7 @@ class MultiHeadLatentAttention(torch.nn.Module):
         self.num_heads: int = num_heads
         self.add_bias: bool = add_bias
         self.causal_mask: bool = causal_mask
+        self.allow_kv_caching: bool = allow_kv_caching
 
         # If specific dimensions for Q, K, V are not provided,
         # default them to d_model
@@ -97,13 +100,17 @@ class MultiHeadLatentAttention(torch.nn.Module):
             add_bias=add_bias,
         )
 
+        if allow_kv_caching:
+            self.kv_cache = KeyValueCaching(
+                caching_tensor_names=["kv_latent", "k_rope"])
+
     def decoupled_rope(self, q_latent, inputs_k):
         q_rope_proj = self.q_rope_proj_layer(q_latent)
         k_rope_proj = self.k_rope_proj_layer(inputs_k)
         # q_rope_proj: (batch_size, seq_len, dim_q)
         # k_rope_proj: (batch_size, seq_len, head_dim)
 
-        q_rope = RotaryPositionalEncoding(d_model=self.d_model)(q_rope_proj)
+        q_rope = RotaryPositionalEncoding(d_model=self.dim_q)(q_rope_proj)
         k_rope = RotaryPositionalEncoding(d_model=self.head_dim)(k_rope_proj)
         # q_rope shape: (batch_size, seq_len, dim_q)
         # k_rope shape: (batch_size, seq_len, head_dim)
@@ -115,31 +122,36 @@ class MultiHeadLatentAttention(torch.nn.Module):
         # Low-rank key-value joint compression
         # inputs shape (batch_size, seq_len, model_dims)
         q_latent = self.q_down_proj_layer(inputs_q)
+        # q_latent: (batch_size, seq_len, q_latent_dim)
         # NOTE: Query compression does not affect KV cache performance.
         # It is used solely during training to reduce activation memory.
+        
+        q_rope, k_rope = self.decoupled_rope(q_latent, inputs_k)
         kv_latent = self.kv_down_proj_layer(inputs_k)
-        # q_latent: (batch_size, seq_len, q_latent_dim)
         # kv_latent: (batch_size, seq_len, kv_latent_dim)
+
+        if self.allow_kv_caching:
+            kv_latent, k_rope = self.kv_cache.update(
+                kv_latent=kv_latent, k_rope=k_rope)
 
         q_proj = self.q_up_proj_layer(q_latent)
         k_proj = self.k_up_proj_layer(kv_latent)
         v_proj = self.v_up_proj_layer(kv_latent)
 
         # Projections Shape
-        # q_proj: (batch_size, seq_len, dim_q)
-        # k_proj: (batch_size, seq_len, dim_k)
-        # v_proj: (batch_size, seq_len, dim_v)
-
-        q_rope, k_rope = self.decoupled_rope(q_latent, inputs_k)
+        # q_proj: (batch_size, seq_len_q, dim_q)
+        # k_proj: (batch_size, seq_len_kv, dim_k)
+        # v_proj: (batch_size, seq_len_kv, dim_v)
 
         # Apply Rotary Positional Encoding
-        batch, seq_len, _ = q_proj.shape
-        q_proj = q_proj.view(batch, seq_len, self.num_heads, self.head_dim)
-        k_proj = k_proj.view(batch, seq_len, self.num_heads, self.head_dim)
-        v_proj = v_proj.view(batch, seq_len, self.num_heads, self.head_dim)
+        batch, seq_len_q, _ = q_proj.shape
+        seq_len_kv = k_proj.shape[1]
+        q_proj = q_proj.view(batch, seq_len_q, self.num_heads, self.head_dim)
+        k_proj = k_proj.view(batch, seq_len_kv, self.num_heads, self.head_dim)
+        v_proj = v_proj.view(batch, seq_len_kv, self.num_heads, self.head_dim)
 
-        q_rope = q_rope.view(batch, seq_len, self.num_heads, self.head_dim)
-        k_rope = k_rope.view(batch, seq_len, 1, self.head_dim)
+        q_rope = q_rope.view(batch, seq_len_q, self.num_heads, self.head_dim)
+        k_rope = k_rope.view(batch, seq_len_kv, 1, self.head_dim)
 
         q_new = torch.concat((q_proj, q_rope), dim=-1)
         k_rope_shared = k_rope.expand(-1, -1, self.num_heads, -1)
@@ -150,9 +162,9 @@ class MultiHeadLatentAttention(torch.nn.Module):
         v_proj = v_proj.transpose(1, 2).contiguous()
         # Shape: (batch_size, num_heads, seq_len, head_dim)
 
-        q_new = q_new.view(batch * self.num_heads, seq_len, -1)
-        k_new = k_new.view(batch * self.num_heads, seq_len, -1)
-        v_proj = v_proj.view(batch * self.num_heads, seq_len, self.head_dim)
+        q_new = q_new.view(batch * self.num_heads, seq_len_q, -1)
+        k_new = k_new.view(batch * self.num_heads, seq_len_kv, -1)
+        v_proj = v_proj.view(batch * self.num_heads, seq_len_kv, self.head_dim)
 
         outputs = ScaledDotProductAttention().forward(
             q_proj=q_new,
@@ -161,10 +173,10 @@ class MultiHeadLatentAttention(torch.nn.Module):
             causal_mask=self.causal_mask,
         )  # Shape: (batch * num_heads, seq_len, head_dim)
 
-        outputs = outputs.view(batch, self.num_heads, seq_len, self.head_dim)
+        outputs = outputs.view(batch, self.num_heads, seq_len_q, self.head_dim)
         outputs = outputs.transpose(1, 2).contiguous()
         outputs = outputs.view(
-            batch, seq_len, self.d_model  # OR head_dim * self.num_heads
+            batch, seq_len_q, self.d_model  # OR head_dim * self.num_heads
         )
 
         # Apply the final linear projection
