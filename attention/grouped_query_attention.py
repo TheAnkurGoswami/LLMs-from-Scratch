@@ -2,6 +2,7 @@ import torch
 from torch import Tensor
 
 from attention.projection import Projection
+from inference.kv_caching import KeyValueCaching
 
 
 class GroupedQueryAttention(torch.nn.Module):
@@ -20,6 +21,7 @@ class GroupedQueryAttention(torch.nn.Module):
         n_kv_heads: int = 1,
         add_bias: bool = True,
         causal_mask: bool = False,
+        allow_kv_caching: bool = False,
     ):
         super().__init__()
         self.d_model: int = d_model  # Store as int, not tensor
@@ -31,12 +33,12 @@ class GroupedQueryAttention(torch.nn.Module):
         # If specific dimensions for Q, K, V are not provided,
         # default them to d_model
         self.dim_q: int = dim_q if dim_q is not None else d_model
-        
+
         if self.dim_q % num_heads:
             raise ValueError(
                 "Total dimensions for Q must be divisible by num_heads."
             )
-        
+
         self.head_dim = self.dim_q // num_heads
         self.dim_k: int = self.head_dim * n_kv_heads
         self.dim_v: int = self.dim_k
@@ -68,6 +70,13 @@ class GroupedQueryAttention(torch.nn.Module):
             add_bias=add_bias,
         )
 
+        self.allow_kv_caching = allow_kv_caching
+
+        if allow_kv_caching:
+            self.kv_cache = KeyValueCaching(
+                caching_tensor_names=["k_proj", "v_proj"]
+            )
+
     def forward(
         self, inputs_q: Tensor, inputs_k: Tensor, inputs_v: Tensor
     ) -> Tensor:
@@ -79,23 +88,28 @@ class GroupedQueryAttention(torch.nn.Module):
         v_proj = self.v_proj_layer(inputs_v)
         # Shape: (batch, seq_len, dim_k)
 
-        batch_size, seq_len, _ = q_proj.shape
+        if self.allow_kv_caching:
+            k_proj, v_proj = self.kv_cache.update(k_proj=k_proj, v_proj=v_proj)
+
+        batch_size, seq_len_q, _ = q_proj.shape
         q_proj = q_proj.view(
             batch_size,
-            seq_len,
+            seq_len_q,
             self.n_kv_heads,
             self.n_heads_per_group,
             self.head_dim,
         ).permute(0, 2, 3, 1, 4)
         # Shape: (batch, seq_len, d_model) ->
         # (batch, num_heads, seq_len, head_dim) ->
-        # (batch, n_kv_heads, n_heads_per_group, seq_len, head_size)
+        # (batch, n_kv_heads, n_heads_per_group, seq_len_q, head_size)
+
+        seq_len_kv = k_proj.shape[1]
 
         k_proj = k_proj.view(
-            batch_size, seq_len, self.n_kv_heads, self.head_dim
+            batch_size, seq_len_kv, self.n_kv_heads, self.head_dim
         ).transpose(1, 2)
-        # Shape: (batch, seq_len, dim_k) ->
-        # (batch, n_kv_heads, seq_len, head_dim)
+        # Shape: (batch, seq_len_kv, dim_k) ->
+        # (batch, n_kv_heads, seq_len_kv, head_dim)
 
         logits = torch.einsum("bgpmd, bgnd -> bgpmn", q_proj, k_proj)
         logits /= self.head_dim**0.5
@@ -103,30 +117,29 @@ class GroupedQueryAttention(torch.nn.Module):
         # Apply causal mask if required
         if self.causal_mask:
             mask = torch.triu(
-                torch.ones(seq_len, seq_len, dtype=torch.bool),
-                diagonal=1
+                torch.ones(seq_len_q, seq_len_kv, dtype=torch.bool), diagonal=1
             )
-            logits = logits.masked_fill(mask, float('-inf'))
+            logits = logits.masked_fill(mask, float("-inf"))
 
         # Apply softmax to get attention weights
         attention = torch.softmax(logits, dim=-1)
 
         v_proj = v_proj.view(
-            batch_size, seq_len, self.n_kv_heads, self.head_dim
+            batch_size, seq_len_kv, self.n_kv_heads, self.head_dim
         ).transpose(1, 2)
-        # Shape: (batch, seq_len, dim_v) ->
-        # (batch, num_groups, seq_len, head_dim)
+        # Shape: (batch, seq_len_kv, dim_v) ->
+        # (batch, num_groups, seq_len_kv, head_dim)
 
         # Multiply attention weights by values
         output = torch.einsum("bgpmn, bgnd -> bgpmd", attention, v_proj)
         # Shape: (batch, n_kv_heads, n_heads_per_group, seq_len, head_dim)
         output = output.permute(0, 3, 1, 2, 4).contiguous()
-        # Shape: (batch, seq_len, n_kv_heads, n_heads_per_group, head_dim)
+        # Shape: (batch, seq_len_q, n_kv_heads, n_heads_per_group, head_dim)
         # Convert gpd (n_kv_heads * n_heads_per_group * head_dim) back to
         # original dim_q.
         output = output.view(
             batch_size,
-            seq_len,
+            seq_len_q,
             self.head_dim * self.n_kv_heads * self.n_heads_per_group,
         )
         # Final output projection

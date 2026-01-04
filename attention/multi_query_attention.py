@@ -2,6 +2,7 @@ import torch
 from torch import Tensor
 
 from attention.projection import Projection
+from inference.kv_caching import KeyValueCaching
 
 
 class MultiQueryAttention(torch.nn.Module):
@@ -17,6 +18,7 @@ class MultiQueryAttention(torch.nn.Module):
         dim_q: int | None = None,
         add_bias: bool = True,
         causal_mask: bool = False,
+        allow_kv_caching: bool = False,
     ):
         super().__init__()
         self.d_model: int = d_model  # Store as int, not tensor
@@ -56,6 +58,13 @@ class MultiQueryAttention(torch.nn.Module):
             add_bias=add_bias,
         )
 
+        self.allow_kv_caching = allow_kv_caching
+
+        if allow_kv_caching:
+            self.kv_cache = KeyValueCaching(
+                caching_tensor_names=["k_proj", "v_proj"]
+            )
+
     def forward(
         self, inputs_q: Tensor, inputs_k: Tensor, inputs_v: Tensor
     ) -> Tensor:
@@ -67,13 +76,18 @@ class MultiQueryAttention(torch.nn.Module):
         # Shape: (batch, seq_len, head_dim)
         v_proj = self.v_proj_layer(inputs_v)
         # Shape: (batch, seq_len, head_dim)
-        batch_size, seq_len, _ = q_proj.shape
+        batch_size, seq_len_q, _ = q_proj.shape
+
+        if self.allow_kv_caching:
+            k_proj, v_proj = self.kv_cache.update(k_proj=k_proj, v_proj=v_proj)
+
+        seq_len_kv = k_proj.shape[1]
 
         # Reshape queries for multi-head attention
         q_proj = q_proj.view(
-            batch_size, seq_len, self.num_heads, self.head_dim
+            batch_size, seq_len_q, self.num_heads, self.head_dim
         ).transpose(1, 2)
-        # Shape: (batch, num_heads, seq_len, d_model/num_heads)
+        # Shape: (batch, num_heads, seq_len_q, d_model/num_heads)
 
         logits = torch.einsum("bhnk, bmk -> bhnm", q_proj, k_proj)
         logits /= self.dim_k**0.5
@@ -81,21 +95,20 @@ class MultiQueryAttention(torch.nn.Module):
         # Apply causal mask if required
         if self.causal_mask:
             mask = torch.triu(
-                torch.ones(seq_len, seq_len, dtype=torch.bool),
-                diagonal=1
+                torch.ones(seq_len_q, seq_len_kv, dtype=torch.bool), diagonal=1
             )
-            logits = logits.masked_fill(mask, float('-inf'))
+            logits = logits.masked_fill(mask, float("-inf"))
 
         # Apply softmax to get attention weights
         attention = torch.softmax(logits, dim=-1)
         # Multiply attention weights by values
         output = torch.einsum("bhnm, bmv -> bhnv", attention, v_proj)
-        # Shape: (batch, num_heads, seq_len, d_model/num_heads)
+        # Shape: (batch, num_heads, seq_len_q, d_model/num_heads)
 
         output = (
             output.transpose(1, 2)
             .contiguous()
-            .view(batch_size, seq_len, self.dim_v * self.num_heads)
+            .view(batch_size, seq_len_q, self.dim_v * self.num_heads)
         )
 
         # Final output projection
